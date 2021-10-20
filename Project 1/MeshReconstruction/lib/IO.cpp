@@ -1,3 +1,5 @@
+#include <stdexcept>
+
 #include "IO.h"
 
 using namespace std;
