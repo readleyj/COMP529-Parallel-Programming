@@ -55,7 +55,6 @@ int main(int argc, char *argv[]) {
         printf("Non-option argument %s\n", argv[index]);
 
     omp_set_num_threads(THREAD_NUM);
-    omp_set_dynamic(0);
     omp_set_max_active_levels(2);
 
     using std::chrono::high_resolution_clock;
@@ -101,7 +100,7 @@ int main(int argc, char *argv[]) {
 
     time_point<high_resolution_clock> start = high_resolution_clock::now();
 
-#pragma omp parallel num_threads(THREAD_NUM) \
+#pragma omp parallel num_threads(THREAD_NUM) if (THREAD_NUM > 1) \
     default(none) \
     shared(frameNum, maxTwist, linkSdf, opTwist, domain, cubeSize, saveObj, correctTest, testRes, cubesRes) \
     private(twist)
