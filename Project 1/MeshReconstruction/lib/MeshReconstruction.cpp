@@ -1,5 +1,4 @@
 #include <iostream>
-#include <omp.h>
 
 #include "MeshReconstruction.h"
 #include "Cube.h"
@@ -77,13 +76,7 @@ Mesh MeshReconstruction::MarchCube(
     int NumY = static_cast<int>(ceil(domain.size.y / cubeSize.y));
     int NumZ = static_cast<int>(ceil(domain.size.z / cubeSize.z));
 
-    double HalfCubeDiag = cubeSize.Norm() / 2.0;
-    Vec3 HalfCubeSize = cubeSize * 0.5;
-
     Mesh mesh;
-
-    int thread = omp_get_thread_num();
-    printf("Thread num %d: got %d\n", thread, twist);
 
 #pragma omp taskloop collapse(3)  \
     default(none) \
