@@ -1,7 +1,9 @@
+#include <iostream>
+#include <omp.h>
+
 #include "MeshReconstruction.h"
 #include "Cube.h"
 #include "Triangulation.h"
-#include <iostream>
 
 using namespace MeshReconstruction;
 using namespace std;
@@ -39,17 +41,21 @@ void Triangulate(
         Vec3 normal1 = grad(v1, twist).Normalized();
         Vec3 normal2 = grad(v2, twist).Normalized();
 
-        mesh.vertices.push_back(v0);
-        mesh.vertices.push_back(v1);
-        mesh.vertices.push_back(v2);
 
-        int last = static_cast<int>(mesh.vertices.size() - 1);
+#pragma omp critical
+        {
+            mesh.vertices.push_back(v0);
+            mesh.vertices.push_back(v1);
+            mesh.vertices.push_back(v2);
 
-        mesh.vertexNormals.push_back(normal0);
-        mesh.vertexNormals.push_back(normal1);
-        mesh.vertexNormals.push_back(normal2);
+            int last = static_cast<int>(mesh.vertices.size() - 1);
 
-        mesh.triangles.push_back({last - 2, last - 1, last});
+            mesh.vertexNormals.push_back(normal0);
+            mesh.vertexNormals.push_back(normal1);
+            mesh.vertexNormals.push_back(normal2);
+
+            mesh.triangles.push_back({last - 2, last - 1, last});
+        }
     }
 }
 
@@ -76,21 +82,24 @@ Mesh MeshReconstruction::MarchCube(
 
     Mesh mesh;
 
-    // iterate over each cube in the mesh
+    int thread = omp_get_thread_num();
+    printf("Thread num %d: got %d\n", thread, twist);
+
+#pragma omp taskloop collapse(3)  \
+    default(none) \
+    shared(domain, cubeSize, sdf, transform, twist, isoLevel, sdfGrad, mesh, NumX, NumY, NumZ)
     for (int ix = 0; ix < NumX; ++ix) {
-        double x = domain.min.x + ix * cubeSize.x;
-
         for (int iy = 0; iy < NumY; ++iy) {
-            double y = domain.min.y + iy * cubeSize.y;
-
             for (int iz = 0; iz < NumZ; ++iz) {
+
+                double x = domain.min.x + ix * cubeSize.x;
+                double y = domain.min.y + iy * cubeSize.y;
                 double z = domain.min.z + iz * cubeSize.z;
+
                 Vec3 min{x, y, z};
 
                 Cube cube({min, cubeSize}, sdf, transform, twist);
-                //map the vertices under the isosurface to intersecting edges
                 IntersectInfo intersect = cube.Intersect(isoLevel);
-                //now create and store the triangle data
                 Triangulate(intersect, sdfGrad, twist, mesh);
             }
         }
