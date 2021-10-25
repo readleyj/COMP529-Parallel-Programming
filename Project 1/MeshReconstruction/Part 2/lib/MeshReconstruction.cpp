@@ -41,20 +41,17 @@ void Triangulate(
         Vec3 normal2 = grad(v2, twist).Normalized();
 
 
-#pragma omp critical
-        {
-            mesh.vertices.push_back(v0);
-            mesh.vertices.push_back(v1);
-            mesh.vertices.push_back(v2);
+        mesh.vertices.push_back(v0);
+        mesh.vertices.push_back(v1);
+        mesh.vertices.push_back(v2);
 
-            int last = static_cast<int>(mesh.vertices.size() - 1);
+        int last = static_cast<int>(mesh.vertices.size() - 1);
 
-            mesh.vertexNormals.push_back(normal0);
-            mesh.vertexNormals.push_back(normal1);
-            mesh.vertexNormals.push_back(normal2);
+        mesh.vertexNormals.push_back(normal0);
+        mesh.vertexNormals.push_back(normal1);
+        mesh.vertexNormals.push_back(normal2);
 
-            mesh.triangles.push_back({last - 2, last - 1, last});
-        }
+        mesh.triangles.push_back({last - 2, last - 1, last});
     }
 }
 
@@ -77,10 +74,7 @@ Mesh MeshReconstruction::MarchCube(
     int NumZ = static_cast<int>(ceil(domain.size.z / cubeSize.z));
 
     Mesh mesh;
-
-#pragma omp taskloop collapse(3)  \
-    default(none) \
-    shared(domain, cubeSize, sdf, transform, twist, isoLevel, sdfGrad, mesh, NumX, NumY, NumZ)
+    
     for (int ix = 0; ix < NumX; ++ix) {
         for (int iy = 0; iy < NumY; ++iy) {
             for (int iz = 0; iz < NumZ; ++iz) {

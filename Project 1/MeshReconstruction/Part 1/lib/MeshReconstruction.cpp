@@ -1,4 +1,5 @@
 #include <iostream>
+#include <omp.h>
 
 #include "MeshReconstruction.h"
 #include "Cube.h"
@@ -58,7 +59,6 @@ void Triangulate(
     }
 }
 
-
 Mesh MeshReconstruction::MarchCube(
         Fun3s const &sdf,
         FunTr const &transform,
@@ -67,7 +67,7 @@ Mesh MeshReconstruction::MarchCube(
         double twist,
         double isoLevel,
         Fun3v sdfGrad) {
-    // Default value.
+
     sdfGrad = sdfGrad == nullptr
               ? [&sdf, &transform](Vec3 const &p, double twist) { return NumGrad(sdf, transform, p, twist); }
               : sdfGrad;
@@ -78,7 +78,7 @@ Mesh MeshReconstruction::MarchCube(
 
     Mesh mesh;
 
-#pragma omp taskloop collapse(3)  \
+#pragma omp parallel for collapse(3)  \
     default(none) \
     shared(domain, cubeSize, sdf, transform, twist, isoLevel, sdfGrad, mesh, NumX, NumY, NumZ)
     for (int ix = 0; ix < NumX; ++ix) {

@@ -100,14 +100,10 @@ int main(int argc, char *argv[]) {
 
     time_point<high_resolution_clock> start = high_resolution_clock::now();
 
-#pragma omp parallel for num_threads(THREAD_NUM) if (THREAD_NUM > 1) \
-    default(none) \
-    shared(frameNum, maxTwist, linkSdf, opTwist, domain, cubeSize, saveObj, correctTest, testRes, cubesRes) \
-    private(twist)
     for (frame = 0; frame < frameNum; frame++) {
         twist = double(frame) / double(frameNum) * maxTwist;
-
         Mesh mesh = MarchCube(linkSdf, opTwist, domain, cubeSize, twist);
+
         if (saveObj) {
             //save the object file if told so
             string filename = "link_f" + to_string(frame) + "_n" + to_string(cubesRes) + ".obj";
