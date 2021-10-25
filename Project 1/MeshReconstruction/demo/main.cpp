@@ -105,7 +105,11 @@ int main(int argc, char *argv[]) {
     shared(frameNum, maxTwist, linkSdf, opTwist, domain, cubeSize, saveObj, correctTest, testRes, cubesRes) \
     private(twist)
     {
-#pragma omp for
+#pragma omp single
+#pragma omp taskloop \
+        default(none) \
+        shared(frameNum, maxTwist, linkSdf, opTwist, domain, cubeSize, saveObj, correctTest, testRes, cubesRes) \
+        private(twist)
         for (frame = 0; frame < frameNum; frame++) {
             twist = double(frame) / double(frameNum) * maxTwist;
 
