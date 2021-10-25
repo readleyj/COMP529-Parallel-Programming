@@ -100,48 +100,41 @@ int main(int argc, char *argv[]) {
 
     time_point<high_resolution_clock> start = high_resolution_clock::now();
 
-#pragma omp parallel num_threads(THREAD_NUM) if (THREAD_NUM > 1) \
+#pragma omp parallel for num_threads(THREAD_NUM) if (THREAD_NUM > 1) \
     default(none) \
     shared(frameNum, maxTwist, linkSdf, opTwist, domain, cubeSize, saveObj, correctTest, testRes, cubesRes) \
     private(twist)
-    {
-#pragma omp single
-#pragma omp taskloop \
-        default(none) \
-        shared(frameNum, maxTwist, linkSdf, opTwist, domain, cubeSize, saveObj, correctTest, testRes, cubesRes) \
-        private(twist)
-        for (frame = 0; frame < frameNum; frame++) {
-            twist = double(frame) / double(frameNum) * maxTwist;
+    for (frame = 0; frame < frameNum; frame++) {
+        twist = double(frame) / double(frameNum) * maxTwist;
 
-            Mesh mesh = MarchCube(linkSdf, opTwist, domain, cubeSize, twist);
-            if (saveObj) {
-                //save the object file if told so
-                string filename = "link_f" + to_string(frame) + "_n" + to_string(cubesRes) + ".obj";
-                WriteObjFile(mesh, filename);
-            }
+        Mesh mesh = MarchCube(linkSdf, opTwist, domain, cubeSize, twist);
+        if (saveObj) {
+            //save the object file if told so
+            string filename = "link_f" + to_string(frame) + "_n" + to_string(cubesRes) + ".obj";
+            WriteObjFile(mesh, filename);
+        }
 
-            //testing
-            if (correctTest) {
-                if (mesh.triangles.size() != testRes[frame].triangles.size()) {
-                    printf("Test for frame %d failed, different triangle number \n", frame);
-                    continue;
-                } else {
-                    int indtri;
-                    for (indtri = 0; indtri < mesh.triangles.size(); indtri++) {
-                        vector<Triangle> v = testRes[frame].triangles;
-                        Triangle tofind = mesh.triangles[indtri];
-                        if (std::find(v.begin(), v.end(), tofind) == v.end()) {
-                            printf("Test for frame %d failed! \n", frame);
-                            break;
-                        }
+        //testing
+        if (correctTest) {
+            if (mesh.triangles.size() != testRes[frame].triangles.size()) {
+                printf("Test for frame %d failed, different triangle number \n", frame);
+                continue;
+            } else {
+                int indtri;
+                for (indtri = 0; indtri < mesh.triangles.size(); indtri++) {
+                    vector<Triangle> v = testRes[frame].triangles;
+                    Triangle tofind = mesh.triangles[indtri];
+                    if (std::find(v.begin(), v.end(), tofind) == v.end()) {
+                        printf("Test for frame %d failed! \n", frame);
+                        break;
                     }
                 }
-                printf("Test for frame %d passed \n", frame);
             }
+            printf("Test for frame %d passed \n", frame);
+        }
 
 //        twist += 1.0 / double(frameNum) * maxTwist;
 //        twist = double(frame) / double(frameNum) * maxTwist;
-        }
     }
 
     time_point<high_resolution_clock> end = high_resolution_clock::now();
