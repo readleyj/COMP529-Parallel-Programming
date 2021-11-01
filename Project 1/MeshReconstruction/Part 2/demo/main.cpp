@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
         twist = 0;
     }
 
-    time_point<high_resolution_clock> start = high_resolution_clock::now();
+    time_point <high_resolution_clock> start = high_resolution_clock::now();
 
 #pragma omp parallel for num_threads(THREAD_NUM) if (THREAD_NUM > 1) \
     default(none) \
@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
             } else {
                 int indtri;
                 for (indtri = 0; indtri < mesh.triangles.size(); indtri++) {
-                    vector<Triangle> v = testRes[frame].triangles;
+                    vector <Triangle> v = testRes[frame].triangles;
                     Triangle tofind = mesh.triangles[indtri];
                     if (std::find(v.begin(), v.end(), tofind) == v.end()) {
                         printf("Test for frame %d failed! \n", frame);
@@ -132,12 +132,9 @@ int main(int argc, char *argv[]) {
             }
             printf("Test for frame %d passed \n", frame);
         }
-
-//        twist += 1.0 / double(frameNum) * maxTwist;
-//        twist = double(frame) / double(frameNum) * maxTwist;
     }
 
-    time_point<high_resolution_clock> end = high_resolution_clock::now();
+    time_point <high_resolution_clock> end = high_resolution_clock::now();
     duration<double> diff = end - start;
 
     printf("Time taken: %f sec \n", diff.count());
