@@ -25,10 +25,10 @@ using namespace std;
 
 // Kernels
 
-__global__ void update_domain_boundaries(double **E_prev, size_t m, size_t n)
+__global__ void update_domain_boundaries(double *E_prev, size_t m, size_t n)
 {
-	int i = blockIdx.y * blockDim.y + threadIdx.y;
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
 
 	E_prev[j][0] = E_prev[j][2];
 	E_prev[j][n + 1] = E_prev[j][n - 1];
@@ -38,7 +38,7 @@ __global__ void update_domain_boundaries(double **E_prev, size_t m, size_t n)
 
 // Version 1 kernels
 
-__global__ void solve_pde_excitation(double **E, double **E_prev, const double alpha)
+__global__ void solve_pde_excitation(double *E, double *E_prev, const double alpha)
 {
 	int i = blockIdx.y * blockDim.y + threadIdx.y;
 	int j = blockIdx.x * blockDim.x + threadIdx.x;
@@ -46,7 +46,7 @@ __global__ void solve_pde_excitation(double **E, double **E_prev, const double a
 	E[j][i] = E_prev[j][i] + alpha * (E_prev[j][i + 1] + E_prev[j][i - 1] - 4 * E_prev[j][i] + E_prev[j + 1][i] + E_prev[j - 1][i]);
 }
 
-__global__ void solve_ode_excitation(double **E, double **E_prev, double **R,
+__global__ void solve_ode_excitation(double *E, double *E_prev, double *R,
 									 const double kk, const double dt, const double a)
 {
 	int i = blockIdx.y * blockDim.y + threadIdx.y;
@@ -55,7 +55,7 @@ __global__ void solve_ode_excitation(double **E, double **E_prev, double **R,
 	E[j][i] = E[j][i] - dt * (kk * E[j][i] * (E[j][i] - a) * (E[j][i] - 1) + E[j][i] * R[j][i]);
 }
 
-__global__ void solve_ode_recovery(double **E, double **R, const double kk, const double dt,
+__global__ void solve_ode_recovery(double *E, double *R, const double kk, const double dt,
 								   const double epsilon, const double M1, const double M2, const double b)
 {
 	int i = blockIdx.y * blockDim.y + threadIdx.y;
@@ -66,7 +66,7 @@ __global__ void solve_ode_recovery(double **E, double **R, const double kk, cons
 
 // Version 2 kernel
 
-__global__ void simulate_kernel_v2(double **E, double **E_prev, double **R,
+__global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
 						const double alpha, const int n, const int m, const double kk,
 						const double dt, const double a, const double epsilon,
 						const double M1, const double M2, const double b)
@@ -82,7 +82,7 @@ __global__ void simulate_kernel_v2(double **E, double **E_prev, double **R,
 
 // Version 3 kernel
 
-__global__ void simulate_kernel_v3(double **E, double **E_prev, double **R,
+__global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 						const double alpha, const int n, const int m, const double kk,
 						const double dt, const double a, const double epsilon,
 						const double M1, const double M2, const double b)
@@ -219,7 +219,7 @@ int main(int argc, char **argv)
    *      and is used in time integration
    */
 	double **h_E, **h_R, **h_E_prev;
-	double **d_E, **d_R, **d_E_prev;
+	double *d_E, *d_R, *d_E_prev;
 
 	// Various constants - these definitions shouldn't change
 	const double a = 0.1, b = 0.1, kk = 8.0, M1 = 0.07, M2 = 0.3, epsilon = 0.01, d = 5e-5;
@@ -259,13 +259,13 @@ int main(int argc, char **argv)
 		for (i = 1; i <= n; i++)
 			h_R[j][i] = 1.0;
 
-	cudaMalloc((void **)&d_E, sizeof(double) * (m + 2) * (n + 2));
-	cudaMalloc((void **)&d_E_prev, sizeof(double) * (m + 2) * (n + 2));
-	cudaMalloc((void **)&d_R, sizeof(double) * (m + 2) * (n + 2));
+	cudaMalloc(&d_E, sizeof(double) * (m + 2) * (n + 2));
+	cudaMalloc(&d_E_prev, sizeof(double) * (m + 2) * (n + 2));
+	cudaMalloc(&d_R, sizeof(double) * (m + 2) * (n + 2));
 
-	cudaMemcpy(d_E, &h_E[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_E_prev, &h_E_prev[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_R, &h_R[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_E, h_E[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_E_prev, h_E_prev[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_R, h_R[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
 
 	double dx = 1.0 / n;
 
@@ -325,7 +325,7 @@ int main(int argc, char **argv)
 		cudaDeviceSynchronize();
 
 		//swap current E with previous E
-		double **tmp = d_E;
+		double *tmp = d_E;
 		d_E = d_E_prev;
 		d_E_prev = tmp;
 
@@ -352,8 +352,8 @@ int main(int argc, char **argv)
 	cout << "Sustained Bandwidth (GB/sec): " << BW << endl
 		 << endl;
 
-	cudaMemcpy(&h_E_prev[0], d_E_prev, sizeof(double) * (m + 2) * (n + 2), cudaMemcpyDeviceToHost);
-	cudaMemcpy(&h_R[0], d_R, sizeof(double) * (m + 2) * (n + 2), cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_E_prev[0], d_E_prev, sizeof(double) * (m + 2) * (n + 2), cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_R[0], d_R, sizeof(double) * (m + 2) * (n + 2), cudaMemcpyDeviceToHost);
 
 	double mx;
 	double l2norm = stats(h_E_prev, m, n, &mx);
