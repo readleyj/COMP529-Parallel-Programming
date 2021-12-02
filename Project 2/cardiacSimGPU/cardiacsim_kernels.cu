@@ -22,9 +22,9 @@ __global__ void update_domain_boundaries(double *E_prev, size_t height, size_t w
 	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
 	{
 		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
-		E_prev[(row * width) + width + 1] = E_prev[(row * width) + width - 1];
+		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
 		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
-		E_prev[(height * (width + 1)) + col] = E_prev[(height * (width - 1)) + col];
+		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 	}
 }
 
@@ -35,11 +35,16 @@ __global__ void solve_pde_excitation(double *E, double *E_prev, const double alp
 {
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	int idx_in = row * width + col;
+
+	int center = row * width + col;
+	int up = center - width;
+	int down = center + width;
+	int left = center - 1;
+	int right = center + 1;
 
 	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
 	{
-		E[idx_in] = E_prev[idx_in] + alpha * (E_prev[idx_in + 1] + E_prev[idx_in + 1] - 4 * E_prev[idx_in] + E_prev[idx_in + width] + E_prev[idx_in - width]) + 10;
+		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
 	}
 }
 
@@ -49,11 +54,12 @@ __global__ void solve_ode_excitation(double *E, double *E_prev, double *R,
 {
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	int idx_in = row * width + col;
+
+	int center = row * width + col;
 
 	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
 	{
-		E[idx_in] = E[idx_in] - dt * (kk * E[idx_in] * (E[idx_in] - a) * (E[idx_in] - 1) + E[idx_in] * R[idx_in]) + 10;
+		E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
 	}
 }
 
@@ -63,12 +69,13 @@ __global__ void solve_ode_recovery(double *E, double *R, const double kk, const 
 {
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	int idx_in = row * width + col;
+
+	int center = row * width + col;
 
 	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
 	{
-		R[idx_in] = R[idx_in] + dt * (epsilon + M1 * R[idx_in] / (E[idx_in] + M2)) *
-									(-R[idx_in] - kk * E[idx_in] * (E[idx_in] - b - 1));
+		R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
+									(-R[center] - kk * E[center] * (E[center] - b - 1));
 	}
 }
 
@@ -80,23 +87,21 @@ __global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
 								   const double M1, const double M2, const double b,
 								   size_t height, size_t width)
 {
-
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	int idx_in = row + col * width;
+
+	int center = row * width + col;
+	int up = center - width;
+	int down = center + width;
+	int left = center - 1;
+	int right = center + 1;
 
 	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
 	{
-		E[idx_in] = E_prev[idx_in] + alpha * (E_prev[idx_in + col * width] +
-											  E_prev[idx_in - col * width] -
-											  4 * E_prev[idx_in] +
-											  E_prev[idx_in + 1] +
-											  E_prev[idx_in - 1]);
-
-		E[idx_in] = E[idx_in] - dt * (kk * E[idx_in] * (E[idx_in] - a) * (E[idx_in] - 1) + E[idx_in] * R[idx_in]);
-
-		R[idx_in] = R[idx_in] + dt * (epsilon + M1 * R[idx_in] / (E[row + col * width] + M2)) *
-									(-R[idx_in] - kk * E[idx_in] * (E[idx_in] - b - 1));
+		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
+		E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
+		R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
+									(-R[center] - kk * E[center] * (E[center] - b - 1));
 	}
 }
 
@@ -110,19 +115,31 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 {
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	int idx_in = row + col * width;
+	
+	int center = row * width + col;
+	int up = center - width;
+	int down = center + width;
+	int left = center - 1;
+	int right = center + 1;
+
+	double e_center = E[center];
+	double e_prev_center = E_prev[center];
+	double r_center = R[center];
 
 	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
 	{
-		int e_ji = E[idx_in], e_prev_ji = E_prev[idx_in], r_ji = R[idx_in];
+		// E[center] = e_prev_ji + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_ji + E_prev[down] + E_prev[up]);
+		// E[center] = e_ji - dt * (kk * e_ji * (e_ji - a) * (e_ji - 1) + e_ji * r_ji);
+		// R[center] = r_ji + dt * (epsilon + M1 * r_ji / (e_ji + M2)) * (-r_ji - kk * e_ji * (e_ji - b - 1));
 
-		E[idx_in] = e_prev_ji + alpha * (E_prev[idx_in + col * width] + E_prev[idx_in - col * width] - 4 * e_prev_ji + E_prev[idx_in + 1] + E_prev[idx_in - 1]);
-		E[idx_in] = e_ji - dt * (kk * e_ji * (e_ji - a) * (e_ji - 1) + e_ji * r_ji);
-		R[idx_in] = r_ji + dt * (epsilon + M1 * r_ji / (e_ji + M2)) * (-r_ji - kk * e_ji * (e_ji - b - 1));
+		E[center] = e_center + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_center + E_prev[down] + E_prev[up]);
+		E[center] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
+		R[center] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
+									(-r_center - kk * e_center * (e_center - b - 1));
 	}
 }
 
-extern "C" void splot(double **E, double T, int niter, int m, int n);
+extern "C" void splot(double *E, double T, int niter, int m, int n);
 void cmdLine(int argc, char *argv[], double &T, int &n, int &px, int &py, int &plot_freq, int &kernel_no);
 
 static const double kMicro = 1.0e-6;
@@ -141,32 +158,27 @@ double getTime()
 	return (((double)TV.tv_sec) + kMicro * ((double)TV.tv_usec));
 }
 
-double **alloc2D(int height, int width)
+double *alloc1D(int height, int width)
 {
-	double **E;
-	int nx = width, ny = height;
-
-	E = (double **)malloc(sizeof(double *) * ny + sizeof(double) * nx * ny);
-	assert(E);
-	int j;
-	for (j = 0; j < ny; j++)
-		E[j] = (double *)(E + ny) + j * nx;
+	double *E = (double *)malloc(sizeof(double) * height * width);
 	return (E);
 }
 
-double stats(double **E, int height, int width, double *_mx)
+double stats(double *E, int height, int width, double *_mx)
 {
 	double mx = -1;
 	double l2norm = 0;
 	int i, j;
 
 	for (i = 1; i <= height; i++)
+	{
 		for (j = 1; j <= width; j++)
 		{
-			l2norm += E[i][j] * E[i][j];
-			if (E[i][j] > mx)
-				mx = E[i][j];
+			l2norm += E[i * width + j] * E[i * width + j];
+			if (E[i * width + j] > mx)
+				mx = E[i * width + j];
 		}
+	}
 
 	*_mx = mx;
 	l2norm /= (double)((height) * (width));
@@ -176,7 +188,7 @@ double stats(double **E, int height, int width, double *_mx)
 
 int main(int argc, char **argv)
 {
-	double **h_E, **h_R, **h_E_prev;
+	double *h_E, *h_R, *h_E_prev;
 	double *d_E, *d_R, *d_E_prev;
 
 	const double a = 0.1, b = 0.1, kk = 8.0, M1 = 0.07, M2 = 0.3, epsilon = 0.01, d = 5e-5;
@@ -191,38 +203,39 @@ int main(int argc, char **argv)
 
 	m = n;
 
-	int height = m + 2, width = n + 2;
+	int height = m + 2 * RADIUS, width = n + 2 * RADIUS;
 
 	const dim3 block_size(bx, by);
-	const dim3 grid(n / block_size.x, m / block_size.y);
+	const dim3 grid((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
 
-	h_E = alloc2D(height, width);
-	h_E_prev = alloc2D(height, width);
-	h_R = alloc2D(height, width);
+	h_E = alloc1D(height, width);
+	h_E_prev = alloc1D(height, width);
+	h_R = alloc1D(height, width);
 
 	int i, j;
 
 	for (i = 1; i <= m; i++)
 		for (j = 1; j <= n; j++)
-			h_E_prev[i][j] = h_R[i][j] = 0;
+			h_E_prev[i * height + j] = h_R[i * height + j] = 0;
 
 	for (i = 1; i <= m; i++)
 		for (j = n / 2 + 1; j <= n; j++)
-			h_E_prev[i][j] = 1.0;
+			h_E_prev[i * height + j] = 1.0;
 
 	for (i = m / 2 + 1; i <= m; i++)
 		for (j = 1; j <= n; j++)
-			h_R[i][j] = 1.0;
-
-	cudaMalloc(&d_E, sizeof(double) * height * width);
-	cudaMalloc(&d_E_prev, sizeof(double) * height * width);
-	cudaMalloc(&d_R, sizeof(double) * height * width);
-
-	cudaMemcpy(d_E, h_E[0], sizeof(double) * height * width, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_E_prev, h_E_prev[0], sizeof(double) * height * width, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_R, h_R[0], sizeof(double) * height * width, cudaMemcpyHostToDevice);
+			h_R[i * height + j] = 1.0;
 
 	double dx = 1.0 / n;
+
+	cudaMalloc((void**) &d_E, sizeof(double) * height * width);
+	cudaMalloc((void**) &d_E_prev, sizeof(double) * height * width);
+	cudaMalloc((void**) &d_R, sizeof(double) * height * width);
+
+	cudaMemcpy(d_E, h_E, sizeof(double) * height * width, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_E_prev, h_E_prev, sizeof(double) * height * width, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_R, h_R, sizeof(double) * height * width, cudaMemcpyHostToDevice);
+
 
 	double rp = kk * (b + 1) * (b + 1) / 4;
 	double dte = (dx * dx) / (d * 4 + ((dx * dx)) * (rp + kk));
@@ -248,31 +261,31 @@ int main(int argc, char **argv)
 		t += dt;
 		niter++;
 
-		update_domain_boundaries<<<grid, block_size>>>(d_E_prev, m, n);
+		update_domain_boundaries<<<grid, block_size>>>(d_E_prev, height, width);
 
 		cudaDeviceSynchronize();
 
 		if (kernel == 1)
 		{
-			solve_pde_excitation<<<grid, block_size>>>(d_E, d_E_prev, alpha, m, n);
+			solve_pde_excitation<<<grid, block_size>>>(d_E, d_E_prev, alpha, height, width);
 
 			cudaDeviceSynchronize();
 
-			solve_ode_excitation<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, a, m, n);
+			solve_ode_excitation<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, a, height, width);
 
 			cudaDeviceSynchronize();
 
-			solve_ode_recovery<<<grid, block_size>>>(d_E, d_R, kk, dt, epsilon, M1, M2, b, m, n);
+			solve_ode_recovery<<<grid, block_size>>>(d_E, d_R, kk, dt, epsilon, M1, M2, b, height, width);
 		}
 		else if (kernel == 2)
 		{
 			simulate_kernel_v2<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
-													 a, epsilon, M1, M2, b, m, n);
+													 a, epsilon, M1, M2, b, height, width);
 		}
 		else if (kernel == 3)
 		{
 			simulate_kernel_v3<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
-													 a, epsilon, M1, M2, b, m, n);
+													 a, epsilon, M1, M2, b, height, width);
 		}
 
 		cudaDeviceSynchronize();
@@ -283,7 +296,7 @@ int main(int argc, char **argv)
 
 		if (plot_freq)
 		{
-			cudaMemcpy(h_E[0], d_E, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
+			cudaMemcpy(h_E, d_E, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
 
 			int k = (int)(t / plot_freq);
 			if ((t - k * plot_freq) < dt)
@@ -304,8 +317,8 @@ int main(int argc, char **argv)
 	cout << "Sustained Bandwidth (GB/sec): " << BW << endl
 		 << endl;
 
-	cudaMemcpy(h_E_prev[0], d_E_prev, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
-	cudaMemcpy(h_R[0], d_R, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_E_prev, d_E_prev, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_R, d_R, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
 
 	double mx;
 	double l2norm = stats(h_E_prev, m, n, &mx);
@@ -328,7 +341,7 @@ int main(int argc, char **argv)
 	return 0;
 }
 
-void cmdLine(int argc, char *argv[], double &T, int &n, int &bx, int &by, int &plot_freq, int &kernel)
+void 	cmdLine(int argc, char *argv[], double &T, int &n, int &bx, int &by, int &plot_freq, int &kernel)
 {
 	static struct option long_options[] = {
 		{"n", required_argument, 0, 'n'},
@@ -356,10 +369,12 @@ void cmdLine(int argc, char *argv[], double &T, int &n, int &bx, int &by, int &p
 				// X block geometry
 			case 'x':
 				bx = atoi(optarg);
+				break;
 
 				// Y block geometry
 			case 'y':
 				by = atoi(optarg);
+				break;
 
 				// Length of simulation, in simulated time units
 			case 't':
@@ -387,20 +402,20 @@ void cmdLine(int argc, char *argv[], double &T, int &n, int &bx, int &by, int &p
 
 FILE *gnu = NULL;
 
-void splot(double **U, double T, int niter, int m, int n)
+void splot(double *U, double T, int niter, int m, int n)
 {
 	int i, j;
 	if (gnu == NULL)
 		gnu = popen("gnuplot", "w");
 
 	double mx = -1, mn = 32768;
-	for (j = 0; j < m; j++)
-		for (i = 0; i < n; i++)
+	for (i = 0; i < m; i++)
+		for (j = 0; j < n; j++)
 		{
-			if (U[j][i] > mx)
-				mx = U[j][i];
-			if (U[j][i] < mn)
-				mn = U[j][i];
+			if (U[i * n + j] > mx)
+				mx = U[i * n + j];
+			if (U[i * n + j] < mn)
+				mn = U[i * n + j];
 		}
 
 	fprintf(gnu, "set title \"T = %f [niter = %d]\"\n", T, niter);
@@ -410,11 +425,11 @@ void splot(double **U, double T, int niter, int m, int n)
 	fprintf(gnu, "set palette defined (-3 \"blue\", 0 \"white\", 1 \"red\")\n");
 	fprintf(gnu, "splot [0:%d] [0:%d][%f:%f] \"-\"\n", m - 1, n - 1, mn, mx);
 
-	for (j = 0; j < m; j++)
+	for (i = 0; i < m; i++)
 	{
-		for (i = 0; i < n; i++)
+		for (j = 0; j < n; j++)
 		{
-			fprintf(gnu, "%d %d %f\n", i, j, U[i][j]);
+			fprintf(gnu, "%d %d %f\n", j, i, U[j * m + i]);
 		}
 		fprintf(gnu, "\n");
 	}
