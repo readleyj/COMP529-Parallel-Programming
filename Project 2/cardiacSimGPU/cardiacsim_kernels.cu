@@ -122,17 +122,16 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 	int left = center - 1;
 	int right = center + 1;
 
-	double e_center = E[center];
-	double e_prev_center = E_prev[center];
-	double r_center = R[center];
-
 	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
 	{
-		// E[center] = e_prev_ji + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_ji + E_prev[down] + E_prev[up]);
-		// E[center] = e_ji - dt * (kk * e_ji * (e_ji - a) * (e_ji - 1) + e_ji * r_ji);
-		// R[center] = r_ji + dt * (epsilon + M1 * r_ji / (e_ji + M2)) * (-r_ji - kk * e_ji * (e_ji - b - 1));
+		double e_center;
+		double e_prev_center = E_prev[center];
+		double r_center = R[center];
 
-		E[center] = e_center + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_center + E_prev[down] + E_prev[up]);
+		E[center] = e_prev_center + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_center + E_prev[down] + E_prev[up]);
+
+		e_center = E[center];
+
 		E[center] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
 		R[center] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
 									(-r_center - kk * e_center * (e_center - b - 1));
