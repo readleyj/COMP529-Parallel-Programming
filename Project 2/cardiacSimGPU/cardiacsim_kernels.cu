@@ -10,78 +10,116 @@
 
 using namespace std;
 
+#define RADIUS 1
+
 // Kernels
 
-__global__ void update_domain_boundaries(double *E_prev, size_t num_rows, size_t num_cols)
+__global__ void update_domain_boundaries(double *E_prev, size_t height, size_t width)
 {
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
 
-	E_prev[j][0] = E_prev[j][2];
-	E_prev[j][n + 1] = E_prev[j][n - 1];
-	E_prev[0][i] = E_prev[2][i];
-	E_prev[m + 1][i] = E_prev[m - 1][i];
+	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	{
+		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+		E_prev[(row * width) + width + 1] = E_prev[(row * width) + width - 1];
+		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+		E_prev[(height * (width + 1)) + col] = E_prev[(height * (width - 1)) + col];
+	}
 }
 
 // Version 1 kernels
 
-__global__ void solve_pde_excitation(double *E, double *E_prev, const double alpha)
+__global__ void solve_pde_excitation(double *E, double *E_prev, const double alpha,
+									 size_t height, size_t width)
 {
-	int i = blockIdx.y * blockDim.y + threadIdx.y;
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int idx_in = row * width + col;
 
-	E[j][i] = E_prev[j][i] + alpha * (E_prev[j][i + 1] + E_prev[j][i - 1] - 4 * E_prev[j][i] + E_prev[j + 1][i] + E_prev[j - 1][i]);
+	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	{
+		E[idx_in] = E_prev[idx_in] + alpha * (E_prev[idx_in + 1] + E_prev[idx_in + 1] - 4 * E_prev[idx_in] + E_prev[idx_in + width] + E_prev[idx_in - width]) + 10;
+	}
 }
 
 __global__ void solve_ode_excitation(double *E, double *E_prev, double *R,
-									 const double kk, const double dt, const double a)
+									 const double kk, const double dt, const double a,
+									 size_t height, size_t width)
 {
-	int i = blockIdx.y * blockDim.y + threadIdx.y;
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int idx_in = row * width + col;
 
-	E[j][i] = E[j][i] - dt * (kk * E[j][i] * (E[j][i] - a) * (E[j][i] - 1) + E[j][i] * R[j][i]);
+	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	{
+		E[idx_in] = E[idx_in] - dt * (kk * E[idx_in] * (E[idx_in] - a) * (E[idx_in] - 1) + E[idx_in] * R[idx_in]) + 10;
+	}
 }
 
 __global__ void solve_ode_recovery(double *E, double *R, const double kk, const double dt,
-								   const double epsilon, const double M1, const double M2, const double b)
+								   const double epsilon, const double M1, const double M2,
+								   const double b, size_t height, size_t width)
 {
-	int i = blockIdx.y * blockDim.y + threadIdx.y;
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int idx_in = row * width + col;
 
-	R[j][i] = R[j][i] + dt * (epsilon + M1 * R[j][i] / (E[j][i] + M2)) * (-R[j][i] - kk * E[j][i] * (E[j][i] - b - 1));
+	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	{
+		R[idx_in] = R[idx_in] + dt * (epsilon + M1 * R[idx_in] / (E[idx_in] + M2)) *
+									(-R[idx_in] - kk * E[idx_in] * (E[idx_in] - b - 1));
+	}
 }
 
 // Version 2 kernel
 
 __global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
-						const double alpha, const int n, const int m, const double kk,
-						const double dt, const double a, const double epsilon,
-						const double M1, const double M2, const double b)
+								   const double alpha, const double kk,
+								   const double dt, const double a, const double epsilon,
+								   const double M1, const double M2, const double b,
+								   size_t height, size_t width)
 {
 
-	int i = blockIdx.y * blockDim.y + threadIdx.y;
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int idx_in = row + col * width;
 
-	E[j][i] = E_prev[j][i] + alpha * (E_prev[j][i + 1] + E_prev[j][i - 1] - 4 * E_prev[j][i] + E_prev[j + 1][i] + E_prev[j - 1][i]);
-	E[j][i] = E[j][i] - dt * (kk * E[j][i] * (E[j][i] - a) * (E[j][i] - 1) + E[j][i] * R[j][i]);
-	R[j][i] = R[j][i] + dt * (epsilon + M1 * R[j][i] / (E[j][i] + M2)) * (-R[j][i] - kk * E[j][i] * (E[j][i] - b - 1));
+	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	{
+		E[idx_in] = E_prev[idx_in] + alpha * (E_prev[idx_in + col * width] +
+											  E_prev[idx_in - col * width] -
+											  4 * E_prev[idx_in] +
+											  E_prev[idx_in + 1] +
+											  E_prev[idx_in - 1]);
+
+		E[idx_in] = E[idx_in] - dt * (kk * E[idx_in] * (E[idx_in] - a) * (E[idx_in] - 1) + E[idx_in] * R[idx_in]);
+
+		R[idx_in] = R[idx_in] + dt * (epsilon + M1 * R[idx_in] / (E[row + col * width] + M2)) *
+									(-R[idx_in] - kk * E[idx_in] * (E[idx_in] - b - 1));
+	}
 }
 
 // Version 3 kernel
 
 __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
-						const double alpha, const int n, const int m, const double kk,
-						const double dt, const double a, const double epsilon,
-						const double M1, const double M2, const double b)
+								   const double alpha, const double kk,
+								   const double dt, const double a, const double epsilon,
+								   const double M1, const double M2, const double b,
+								   size_t height, size_t width)
 {
-	int i = blockIdx.y * blockDim.y + threadIdx.y;
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int idx_in = row + col * width;
 
-	int e_ji = E[j][i], e_prev_ji = E_prev[j][i], r_ji = R[j][i];
+	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	{
+		int e_ji = E[idx_in], e_prev_ji = E_prev[idx_in], r_ji = R[idx_in];
 
-	E[j][i] = e_prev_ji + alpha * (E_prev[j][i + 1] + E_prev[j][i - 1] - 4 * e_prev_ji + E_prev[j + 1][i] + E_prev[j - 1][i]);
-	E[j][i] = e_ji - dt * (kk * e_ji * (e_ji - a) * (e_ji - 1) + e_ji * r_ji);
-	R[j][i] = r_ji + dt * (epsilon + M1 * r_ji / (e_ji + M2)) * (-r_ji - kk * e_ji * (e_ji - b - 1));
+		E[idx_in] = e_prev_ji + alpha * (E_prev[idx_in + col * width] + E_prev[idx_in - col * width] - 4 * e_prev_ji + E_prev[idx_in + 1] + E_prev[idx_in - 1]);
+		E[idx_in] = e_ji - dt * (kk * e_ji * (e_ji - a) * (e_ji - 1) + e_ji * r_ji);
+		R[idx_in] = r_ji + dt * (epsilon + M1 * r_ji / (e_ji + M2)) * (-r_ji - kk * e_ji * (e_ji - b - 1));
+	}
 }
 
 extern "C" void splot(double **E, double T, int niter, int m, int n);
@@ -101,13 +139,12 @@ double getTime()
 	}
 
 	return (((double)TV.tv_sec) + kMicro * ((double)TV.tv_usec));
-
 }
 
-double **alloc2D(int num_rows, int num_cols)
+double **alloc2D(int height, int width)
 {
 	double **E;
-	int nx = num_cols, ny = num_rows;
+	int nx = width, ny = height;
 
 	E = (double **)malloc(sizeof(double *) * ny + sizeof(double) * nx * ny);
 	assert(E);
@@ -117,14 +154,14 @@ double **alloc2D(int num_rows, int num_cols)
 	return (E);
 }
 
-double stats(double **E, int num_rows, int num_cols, double *_mx)
+double stats(double **E, int height, int width, double *_mx)
 {
 	double mx = -1;
 	double l2norm = 0;
 	int i, j;
 
-	for (i = 1; i <= num_rows; i++)
-		for (j = 1; j <= num_cols; j++)
+	for (i = 1; i <= height; i++)
+		for (j = 1; j <= width; j++)
 		{
 			l2norm += E[i][j] * E[i][j];
 			if (E[i][j] > mx)
@@ -132,7 +169,7 @@ double stats(double **E, int num_rows, int num_cols, double *_mx)
 		}
 
 	*_mx = mx;
-	l2norm /= (double)((num_rows) * (num_cols));
+	l2norm /= (double)((height) * (width));
 	l2norm = sqrt(l2norm);
 	return l2norm;
 }
@@ -154,34 +191,36 @@ int main(int argc, char **argv)
 
 	m = n;
 
+	int height = m + 2, width = n + 2;
+
 	const dim3 block_size(bx, by);
 	const dim3 grid(n / block_size.x, m / block_size.y);
 
-	h_E = alloc2D(m + 2, n + 2);
-	h_E_prev = alloc2D(m + 2, n + 2);
-	h_R = alloc2D(m + 2, n + 2);
+	h_E = alloc2D(height, width);
+	h_E_prev = alloc2D(height, width);
+	h_R = alloc2D(height, width);
 
 	int i, j;
 
-	for (j = 1; j <= m; j++)
-		for (i = 1; i <= n; i++)
-			h_E_prev[j][i] = h_R[j][i] = 0;
+	for (i = 1; i <= m; i++)
+		for (j = 1; j <= n; j++)
+			h_E_prev[i][j] = h_R[i][j] = 0;
 
-	for (j = 1; j <= m; j++)
-		for (i = n / 2 + 1; i <= n; i++)
-			h_E_prev[j][i] = 1.0;
+	for (i = 1; i <= m; i++)
+		for (j = n / 2 + 1; j <= n; j++)
+			h_E_prev[i][j] = 1.0;
 
-	for (j = m / 2 + 1; j <= m; j++)
-		for (i = 1; i <= n; i++)
-			h_R[j][i] = 1.0;
+	for (i = m / 2 + 1; i <= m; i++)
+		for (j = 1; j <= n; j++)
+			h_R[i][j] = 1.0;
 
-	cudaMalloc(&d_E, sizeof(double) * (m + 2) * (n + 2));
-	cudaMalloc(&d_E_prev, sizeof(double) * (m + 2) * (n + 2));
-	cudaMalloc(&d_R, sizeof(double) * (m + 2) * (n + 2));
+	cudaMalloc(&d_E, sizeof(double) * height * width);
+	cudaMalloc(&d_E_prev, sizeof(double) * height * width);
+	cudaMalloc(&d_R, sizeof(double) * height * width);
 
-	cudaMemcpy(d_E, h_E[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_E_prev, h_E_prev[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_R, h_R[0], sizeof(double) * (m + 2) * (n + 2), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_E, h_E[0], sizeof(double) * height * width, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_E_prev, h_E_prev[0], sizeof(double) * height * width, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_R, h_R[0], sizeof(double) * height * width, cudaMemcpyHostToDevice);
 
 	double dx = 1.0 / n;
 
@@ -215,22 +254,25 @@ int main(int argc, char **argv)
 
 		if (kernel == 1)
 		{
-			solve_pde_excitation<<<grid, block_size>>>(d_E, d_E_prev, alpha);
+			solve_pde_excitation<<<grid, block_size>>>(d_E, d_E_prev, alpha, m, n);
 
 			cudaDeviceSynchronize();
 
-			solve_ode_excitation<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, a);
+			solve_ode_excitation<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, a, m, n);
 
 			cudaDeviceSynchronize();
 
-			solve_ode_recovery<<<grid, block_size>>>(d_E, d_R, kk, dt, epsilon, M1, M2, b);
+			solve_ode_recovery<<<grid, block_size>>>(d_E, d_R, kk, dt, epsilon, M1, M2, b, m, n);
 		}
 		else if (kernel == 2)
 		{
-			simulate_kernel_v2<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, n, m, kk, dt, a, epsilon, M1, M2, b);
-		} 
-		else if (kernel == 3) {
-			simulate_kernel_v3<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, n, m, kk, dt, a, epsilon, M1, M2, b);
+			simulate_kernel_v2<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
+													 a, epsilon, M1, M2, b, m, n);
+		}
+		else if (kernel == 3)
+		{
+			simulate_kernel_v3<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
+													 a, epsilon, M1, M2, b, m, n);
 		}
 
 		cudaDeviceSynchronize();
@@ -239,17 +281,17 @@ int main(int argc, char **argv)
 		d_E = d_E_prev;
 		d_E_prev = tmp;
 
-		// cudaMemcpy(&h_E[0], d_E, sizeof(double) * (m + 2) * (n + 2), cudaMemcpyDeviceToHost);
+		if (plot_freq)
+		{
+			cudaMemcpy(h_E[0], d_E, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
 
-		// if (plot_freq)
-		// {
-		// 	int k = (int)(t / plot_freq);
-		// 	if ((t - k * plot_freq) < dt)
-		// 	{
-		// 		splot(h_E, t, niter, m + 2, n + 2);
-		// 	}
-		// }
-	} //end of while loop
+			int k = (int)(t / plot_freq);
+			if ((t - k * plot_freq) < dt)
+			{
+				splot(h_E, t, niter, height, width);
+			}
+		}
+	}
 
 	double time_elapsed = getTime() - t0;
 
@@ -262,8 +304,8 @@ int main(int argc, char **argv)
 	cout << "Sustained Bandwidth (GB/sec): " << BW << endl
 		 << endl;
 
-	cudaMemcpy(h_E_prev[0], d_E_prev, sizeof(double) * (m + 2) * (n + 2), cudaMemcpyDeviceToHost);
-	cudaMemcpy(h_R[0], d_R, sizeof(double) * (m + 2) * (n + 2), cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_E_prev[0], d_E_prev, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_R[0], d_R, sizeof(double) * height * width, cudaMemcpyDeviceToHost);
 
 	double mx;
 	double l2norm = stats(h_E_prev, m, n, &mx);
@@ -367,7 +409,7 @@ void splot(double **U, double T, int niter, int m, int n)
 	fprintf(gnu, "set pm3d map\n");
 	fprintf(gnu, "set palette defined (-3 \"blue\", 0 \"white\", 1 \"red\")\n");
 	fprintf(gnu, "splot [0:%d] [0:%d][%f:%f] \"-\"\n", m - 1, n - 1, mn, mx);
-	
+
 	for (j = 0; j < m; j++)
 	{
 		for (i = 0; i < n; i++)
