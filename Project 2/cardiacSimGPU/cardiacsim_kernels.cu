@@ -16,10 +16,10 @@ using namespace std;
 
 __global__ void update_domain_boundaries(double *E_prev, size_t height, size_t width)
 {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
+	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
-	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
 		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
@@ -33,8 +33,8 @@ __global__ void update_domain_boundaries(double *E_prev, size_t height, size_t w
 __global__ void solve_pde_excitation(double *E, double *E_prev, const double alpha,
 									 size_t height, size_t width)
 {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
+	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
 	int center = row * width + col;
 	int up = center - width;
@@ -42,7 +42,7 @@ __global__ void solve_pde_excitation(double *E, double *E_prev, const double alp
 	int left = center - 1;
 	int right = center + 1;
 
-	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
 	}
@@ -52,12 +52,12 @@ __global__ void solve_ode_excitation(double *E, double *E_prev, double *R,
 									 const double kk, const double dt, const double a,
 									 size_t height, size_t width)
 {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
+	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
 	int center = row * width + col;
 
-	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
 	}
@@ -67,12 +67,12 @@ __global__ void solve_ode_recovery(double *E, double *R, const double kk, const 
 								   const double epsilon, const double M1, const double M2,
 								   const double b, size_t height, size_t width)
 {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
+	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
 	int center = row * width + col;
 
-	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
 									(-R[center] - kk * E[center] * (E[center] - b - 1));
@@ -87,8 +87,8 @@ __global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
 								   const double M1, const double M2, const double b,
 								   size_t height, size_t width)
 {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
+	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
 	int center = row * width + col;
 	int up = center - width;
@@ -96,7 +96,7 @@ __global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
 	int left = center - 1;
 	int right = center + 1;
 
-	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
 		E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
@@ -113,8 +113,8 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 								   const double M1, const double M2, const double b,
 								   size_t height, size_t width)
 {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
+	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
 	int center = row * width + col;
 	int up = center - width;
@@ -122,7 +122,7 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 	int left = center - 1;
 	int right = center + 1;
 
-	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		double e_center;
 		double e_prev_center = E_prev[center];
@@ -147,15 +147,15 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 {
 	extern __shared__ double E_prev_tile[];
 
-	int tx = threadIdx.x, ty = threadIdx.y;
-	int bx = blockIdx.x, by = blockIdx.y;
-
-	int col = bx * blockDim.x + tx;
-	int row = by * blockDim.y + ty;
+	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
+	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
 	int global_idx = row * width + col;
 
-	int tile_center = ty * block_width + tx;
+	int local_col = threadIdx.x + RADIUS;
+	int local_row = threadIdx.y + RADIUS;
+
+	int tile_center = local_row * block_width + local_col;
 	int tile_up = tile_center - block_width;
 	int tile_down = tile_center + block_width;
 	int tile_left = tile_center - 1;
@@ -163,18 +163,21 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 
 	E_prev_tile[tile_center] = E_prev[global_idx];
 
-	printf("%d %d\n", ty, tx);
+	if (threadIdx.y < RADIUS && threadIdx.x >= RADIUS)
+	{
+		E_prev_tile[tile_center - RADIUS * block_width] = E_prev[global_idx - RADIUS * width];
+		E_prev_tile[tile_center + block_height * block_width] = E_prev[global_idx + block_height * width];
+	}
 
-	if row
+	if (threadIdx.x < RADIUS && threadIdx.y >= RADIUS)
+	{
+		E_prev_tile[tile_center - RADIUS] = E_prev[global_idx - RADIUS];
+		E_prev_tile[tile_center + block_width] = E_prev[global_idx + block_width];
+	}
 
-		// row 0
-		// row block_height - 1
-		// col 0
-		// col block_width - 1
+	__syncthreads();
 
-		__syncthreads();
-
-	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		double e_center;
 		double e_prev_center = E_prev_tile[tile_center];
@@ -256,6 +259,7 @@ int main(int argc, char **argv)
 	m = n;
 
 	int height = m + 2 * RADIUS, width = n + 2 * RADIUS;
+	int block_height = by + 2 * RADIUS, block_width = bx + 2 * RADIUS;
 
 	const dim3 block_size(bx, by);
 	const dim3 grid((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
@@ -341,8 +345,9 @@ int main(int argc, char **argv)
 
 		else if (kernel == 4)
 		{
-			simulate_kernel_v4<<<grid, block_size, (bx + 2) * (by + 2) * sizeof(double)>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
-																						   a, epsilon, M1, M2, b, height, width, bx, by);
+			simulate_kernel_v4<<<grid, block_size, block_height * block_width * sizeof(double)>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
+																								  a, epsilon, M1, M2, b,
+																								  height, width, block_height, block_width);
 		}
 
 		cudaDeviceSynchronize();
