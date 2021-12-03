@@ -115,7 +115,7 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 {
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	
+
 	int center = row * width + col;
 	int up = center - width;
 	int down = center + width;
@@ -134,7 +134,60 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 
 		E[center] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
 		R[center] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
-									(-r_center - kk * e_center * (e_center - b - 1));
+								   (-r_center - kk * e_center * (e_center - b - 1));
+	}
+}
+
+__global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
+								   const double alpha, const double kk,
+								   const double dt, const double a, const double epsilon,
+								   const double M1, const double M2, const double b,
+								   size_t height, size_t width,
+								   size_t block_height, size_t block_width)
+{
+	extern __shared__ double E_prev_tile[];
+
+	int tx = threadIdx.x, ty = threadIdx.y;
+	int bx = blockIdx.x, by = blockIdx.y;
+
+	int col = bx * blockDim.x + tx;
+	int row = by * blockDim.y + ty;
+
+	int global_idx = row * width + col;
+
+	int tile_center = ty * block_width + tx;
+	int tile_up = tile_center - block_width;
+	int tile_down = tile_center + block_width;
+	int tile_left = tile_center - 1;
+	int tile_right = tile_center + 1;
+
+	E_prev_tile[tile_center] = E_prev[global_idx];
+
+	printf("%d %d\n", ty, tx);
+
+	if row
+
+		// row 0
+		// row block_height - 1
+		// col 0
+		// col block_width - 1
+
+		__syncthreads();
+
+	if (row >= RADIUS && col >= RADIUS && row < height - RADIUS && col < width - RADIUS)
+	{
+		double e_center;
+		double e_prev_center = E_prev_tile[tile_center];
+		double r_center = R[global_idx];
+
+		E[global_idx] = e_prev_center + alpha * (E_prev_tile[tile_right] + E_prev_tile[tile_left] -
+												 4 * e_prev_center + E_prev_tile[tile_down] + E_prev_tile[tile_up]);
+
+		e_center = E[global_idx];
+
+		E[global_idx] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
+		R[global_idx] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
+									   (-r_center - kk * e_center * (e_center - b - 1));
 	}
 }
 
@@ -227,14 +280,13 @@ int main(int argc, char **argv)
 
 	double dx = 1.0 / n;
 
-	cudaMalloc((void**) &d_E, sizeof(double) * height * width);
-	cudaMalloc((void**) &d_E_prev, sizeof(double) * height * width);
-	cudaMalloc((void**) &d_R, sizeof(double) * height * width);
+	cudaMalloc((void **)&d_E, sizeof(double) * height * width);
+	cudaMalloc((void **)&d_E_prev, sizeof(double) * height * width);
+	cudaMalloc((void **)&d_R, sizeof(double) * height * width);
 
 	cudaMemcpy(d_E, h_E, sizeof(double) * height * width, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_E_prev, h_E_prev, sizeof(double) * height * width, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_R, h_R, sizeof(double) * height * width, cudaMemcpyHostToDevice);
-
 
 	double rp = kk * (b + 1) * (b + 1) / 4;
 	double dte = (dx * dx) / (d * 4 + ((dx * dx)) * (rp + kk));
@@ -285,6 +337,12 @@ int main(int argc, char **argv)
 		{
 			simulate_kernel_v3<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
 													 a, epsilon, M1, M2, b, height, width);
+		}
+
+		else if (kernel == 4)
+		{
+			simulate_kernel_v4<<<grid, block_size, (bx + 2) * (by + 2) * sizeof(double)>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
+																						   a, epsilon, M1, M2, b, height, width, bx, by);
 		}
 
 		cudaDeviceSynchronize();
@@ -340,7 +398,7 @@ int main(int argc, char **argv)
 	return 0;
 }
 
-void 	cmdLine(int argc, char *argv[], double &T, int &n, int &bx, int &by, int &plot_freq, int &kernel)
+void cmdLine(int argc, char *argv[], double &T, int &n, int &bx, int &by, int &plot_freq, int &kernel)
 {
 	static struct option long_options[] = {
 		{"n", required_argument, 0, 'n'},
