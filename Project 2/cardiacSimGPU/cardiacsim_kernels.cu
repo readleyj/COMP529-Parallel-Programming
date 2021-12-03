@@ -163,16 +163,16 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 
 	E_prev_tile[tile_center] = E_prev[global_idx];
 
-	if (threadIdx.y < RADIUS && threadIdx.x >= RADIUS)
+	if (threadIdx.y < RADIUS)
 	{
 		E_prev_tile[tile_center - RADIUS * block_width] = E_prev[global_idx - RADIUS * width];
-		E_prev_tile[tile_center + block_height * block_width] = E_prev[global_idx + block_height * width];
+		E_prev_tile[tile_center + (block_height - 2 * RADIUS) * block_width] = E_prev[global_idx + (block_height - 2 * RADIUS) * width];
 	}
 
-	if (threadIdx.x < RADIUS && threadIdx.y >= RADIUS)
+	if (threadIdx.x < RADIUS)
 	{
 		E_prev_tile[tile_center - RADIUS] = E_prev[global_idx - RADIUS];
-		E_prev_tile[tile_center + block_width] = E_prev[global_idx + block_width];
+		E_prev_tile[tile_center + (block_width - 2 * RADIUS)] = E_prev[global_idx + (block_width - 2 * RADIUS)];
 	}
 
 	__syncthreads();
