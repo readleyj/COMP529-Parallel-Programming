@@ -156,10 +156,11 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 								   const double alpha, const double kk,
 								   const double dt, const double a, const double epsilon,
 								   const double M1, const double M2, const double b,
-								   size_t height, size_t width,
-								   size_t block_height, size_t block_width)
+								   size_t height, size_t width)
 {
 	extern __shared__ double E_prev_tile[];
+
+	int block_height = blockDim.y + 2 * RADIUS, block_width = blockDim.x + 2 * RADIUS;
 
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
@@ -367,7 +368,7 @@ int main(int argc, char **argv)
 		{
 			simulate_kernel_v4<<<grid, block_size, block_height * block_width * sizeof(double)>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
 																								  a, epsilon, M1, M2, b,
-																								  height, width, block_height, block_width);
+																								  height, width);
 		}
 
 		cudaDeviceSynchronize();
