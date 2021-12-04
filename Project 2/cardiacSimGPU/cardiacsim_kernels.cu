@@ -12,22 +12,6 @@ using namespace std;
 
 #define RADIUS 1
 
-// Kernels
-
-__global__ void update_domain_boundaries(double *E_prev, size_t height, size_t width)
-{
-	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
-	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
-
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
-		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
-		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
-		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
-	}
-}
-
 // Version 1 kernels
 
 __global__ void solve_pde_excitation(double *E, double *E_prev, const double alpha,
@@ -41,6 +25,16 @@ __global__ void solve_pde_excitation(double *E, double *E_prev, const double alp
 	int down = center + width;
 	int left = center - 1;
 	int right = center + 1;
+
+	if (row < height + RADIUS && col < width + RADIUS)
+	{
+		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
+	}
+
+	__syncthreads();
 
 	if (row < height + RADIUS && col < width + RADIUS)
 	{
@@ -63,7 +57,7 @@ __global__ void solve_ode_excitation(double *E, double *E_prev, double *R,
 	}
 }
 
-__global__ void solve_ode_recovery(double *E, double *R, const double kk, const double dt,
+__global__ void solve_ode_recovery(double *E, double *E_prev, double *R, const double kk, const double dt,
 								   const double epsilon, const double M1, const double M2,
 								   const double b, size_t height, size_t width)
 {
@@ -98,6 +92,16 @@ __global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
 
 	if (row < height + RADIUS && col < width + RADIUS)
 	{
+		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
+	}
+
+	__syncthreads();
+
+	if (row < height + RADIUS && col < width + RADIUS)
+	{
 		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
 		E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
 		R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
@@ -121,6 +125,16 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 	int down = center + width;
 	int left = center - 1;
 	int right = center + 1;
+
+	if (row < height + RADIUS && col < width + RADIUS)
+	{
+		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
+	}
+
+	__syncthreads();
 
 	if (row < height + RADIUS && col < width + RADIUS)
 	{
@@ -149,6 +163,16 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
+
+	if (row < height + RADIUS && col < width + RADIUS)
+	{
+		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
+	}
+
+	__syncthreads();
 
 	int global_idx = row * width + col;
 
@@ -316,10 +340,6 @@ int main(int argc, char **argv)
 		t += dt;
 		niter++;
 
-		update_domain_boundaries<<<grid, block_size>>>(d_E_prev, height, width);
-
-		cudaDeviceSynchronize();
-
 		if (kernel == 1)
 		{
 			solve_pde_excitation<<<grid, block_size>>>(d_E, d_E_prev, alpha, height, width);
@@ -330,7 +350,7 @@ int main(int argc, char **argv)
 
 			cudaDeviceSynchronize();
 
-			solve_ode_recovery<<<grid, block_size>>>(d_E, d_R, kk, dt, epsilon, M1, M2, b, height, width);
+			solve_ode_recovery<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, epsilon, M1, M2, b, height, width);
 		}
 		else if (kernel == 2)
 		{
