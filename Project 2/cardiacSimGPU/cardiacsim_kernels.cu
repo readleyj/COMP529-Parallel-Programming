@@ -34,8 +34,6 @@ __global__ void solve_pde_excitation(double *E, double *E_prev, const double alp
 		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 	}
 
-	__syncthreads();
-
 	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
@@ -98,8 +96,6 @@ __global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
 		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 	}
 
-	__syncthreads();
-
 	if (row < height + RADIUS && col < width + RADIUS)
 	{
 		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
@@ -133,8 +129,6 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
 		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 	}
-
-	__syncthreads();
 
 	if (row < height + RADIUS && col < width + RADIUS)
 	{
@@ -172,8 +166,6 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
 		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 	}
-
-	__syncthreads();
 
 	int global_idx = row * width + col;
 
