@@ -12,6 +12,11 @@ using namespace std;
 
 #define RADIUS 1
 
+typedef void (*sim_ptr)(double *d_E, double *d_E_prev, double *d_R, int bx, int by,
+						double alpha, int n, int m, double kk,
+						double dt, double a, double epsilon,
+						double M1, double M2, double b);
+
 // Version 1 kernels
 
 __global__ void solve_pde_excitation(double *E, double *E_prev, const double alpha,
@@ -26,18 +31,17 @@ __global__ void solve_pde_excitation(double *E, double *E_prev, const double alp
 	int left = center - 1;
 	int right = center + 1;
 
-	if (row < height + RADIUS && col < width + RADIUS)
+	if (!(row < height + RADIUS && col < width + RADIUS))
 	{
-		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
-		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
-		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
-		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
+		return;
 	}
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
-	}
+	E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+	E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+	E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+	E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
+
+	E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
 }
 
 __global__ void solve_ode_excitation(double *E, double *E_prev, double *R,
@@ -62,25 +66,32 @@ __global__ void solve_ode_recovery(double *E, double *E_prev, double *R, const d
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
+	if (!(row < height + RADIUS && col < width + RADIUS))
+	{
+		return;
+	}
+
 	int center = row * width + col;
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
-									(-R[center] - kk * E[center] * (E[center] - b - 1));
-	}
+	R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
+								(-R[center] - kk * E[center] * (E[center] - b - 1));
 }
 
 // Version 2 kernel
 
-__global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
-								   const double alpha, const double kk,
-								   const double dt, const double a, const double epsilon,
-								   const double M1, const double M2, const double b,
-								   size_t height, size_t width)
+__global__ void kernel_v2(double *E, double *E_prev, double *R,
+						  const double alpha, const double kk,
+						  const double dt, const double a, const double epsilon,
+						  const double M1, const double M2, const double b,
+						  size_t height, size_t width)
 {
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
+
+	if (!(row < height + RADIUS && col < width + RADIUS))
+	{
+		return;
+	}
 
 	int center = row * width + col;
 	int up = center - width;
@@ -88,33 +99,32 @@ __global__ void simulate_kernel_v2(double *E, double *E_prev, double *R,
 	int left = center - 1;
 	int right = center + 1;
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
-		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
-		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
-		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
-	}
+	E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+	E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+	E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+	E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
-		E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
-		R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
-									(-R[center] - kk * E[center] * (E[center] - b - 1));
-	}
+	E[center] = E_prev[center] + alpha * (E_prev[right] + E_prev[left] - 4 * E_prev[center] + E_prev[down] + E_prev[up]);
+	E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
+	R[center] = R[center] + dt * (epsilon + M1 * R[center] / (E[center] + M2)) *
+								(-R[center] - kk * E[center] * (E[center] - b - 1));
 }
 
 // Version 3 kernel
 
-__global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
-								   const double alpha, const double kk,
-								   const double dt, const double a, const double epsilon,
-								   const double M1, const double M2, const double b,
-								   size_t height, size_t width)
+__global__ void kernel_v3(double *E, double *E_prev, double *R,
+						  const double alpha, const double kk,
+						  const double dt, const double a, const double epsilon,
+						  const double M1, const double M2, const double b,
+						  size_t height, size_t width)
 {
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
+
+	if (!(row < height + RADIUS && col < width + RADIUS))
+	{
+		return;
+	}
 
 	int center = row * width + col;
 	int up = center - width;
@@ -122,35 +132,31 @@ __global__ void simulate_kernel_v3(double *E, double *E_prev, double *R,
 	int left = center - 1;
 	int right = center + 1;
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
-		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
-		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
-		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
-	}
+	E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+	E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+	E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+	E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		double e_center;
-		double e_prev_center = E_prev[center];
-		double r_center = R[center];
+	double e_center;
+	double e_prev_center = E_prev[center];
+	double r_center = R[center];
 
-		E[center] = e_prev_center + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_center + E_prev[down] + E_prev[up]);
+	E[center] = e_prev_center + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_center + E_prev[down] + E_prev[up]);
 
-		e_center = E[center];
+	e_center = E[center];
 
-		E[center] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
-		R[center] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
-								   (-r_center - kk * e_center * (e_center - b - 1));
-	}
+	E[center] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
+	R[center] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
+							   (-r_center - kk * e_center * (e_center - b - 1));
 }
 
-__global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
-								   const double alpha, const double kk,
-								   const double dt, const double a, const double epsilon,
-								   const double M1, const double M2, const double b,
-								   size_t height, size_t width)
+// Version 4 kernel
+
+__global__ void kernel_v4(double *E, double *E_prev, double *R,
+						  const double alpha, const double kk,
+						  const double dt, const double a, const double epsilon,
+						  const double M1, const double M2, const double b,
+						  size_t height, size_t width)
 {
 	extern __shared__ double E_prev_tile[];
 
@@ -159,13 +165,15 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
-	if (row < height + RADIUS && col < width + RADIUS)
+	if (!(row < height + RADIUS && col < width + RADIUS))
 	{
-		E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
-		E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
-		E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
-		E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
+		return;
 	}
+
+	E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
+	E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
+	E_prev[(0 * width) + col] = E_prev[(2 * width) + col];
+	E_prev[((width - 2 * RADIUS + 1) * width) + col] = E_prev[((width - 2 * RADIUS - 1) * width) + col];
 
 	int global_idx = row * width + col;
 
@@ -194,21 +202,85 @@ __global__ void simulate_kernel_v4(double *E, double *E_prev, double *R,
 
 	__syncthreads();
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		double e_center;
-		double e_prev_center = E_prev_tile[tile_center];
-		double r_center = R[global_idx];
+	double e_center;
+	double e_prev_center = E_prev_tile[tile_center];
+	double r_center = R[global_idx];
 
-		E[global_idx] = e_prev_center + alpha * (E_prev_tile[tile_right] + E_prev_tile[tile_left] -
-												 4 * e_prev_center + E_prev_tile[tile_down] + E_prev_tile[tile_up]);
+	E[global_idx] = e_prev_center + alpha * (E_prev_tile[tile_right] + E_prev_tile[tile_left] -
+											 4 * e_prev_center + E_prev_tile[tile_down] + E_prev_tile[tile_up]);
 
-		e_center = E[global_idx];
+	e_center = E[global_idx];
 
-		E[global_idx] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
-		R[global_idx] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
-									   (-r_center - kk * e_center * (e_center - b - 1));
-	}
+	E[global_idx] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
+	R[global_idx] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
+								   (-r_center - kk * e_center * (e_center - b - 1));
+}
+
+// Simulation functions
+
+void simulate_v1(double *d_E, double *d_E_prev, double *d_R, int bx, int by,
+				 const double alpha, const int n, const int m, const double kk,
+				 const double dt, const double a, const double epsilon,
+				 const double M1, const double M2, const double b)
+{
+	int height = m + 2 * RADIUS, width = n + 2 * RADIUS;
+
+	const dim3 block_size(bx, by);
+	const dim3 grid((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
+
+	solve_pde_excitation<<<grid, block_size>>>(d_E, d_E_prev, alpha, height, width);
+
+	cudaDeviceSynchronize();
+
+	solve_ode_excitation<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, a, height, width);
+
+	cudaDeviceSynchronize();
+
+	solve_ode_recovery<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, epsilon, M1, M2, b, height, width);
+}
+
+void simulate_v2(double *d_E, double *d_E_prev, double *d_R, int bx, int by,
+				 const double alpha, const int n, const int m, const double kk,
+				 const double dt, const double a, const double epsilon,
+				 const double M1, const double M2, const double b)
+{
+	int height = m + 2 * RADIUS, width = n + 2 * RADIUS;
+
+	const dim3 block_size(bx, by);
+	const dim3 grid((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
+
+	kernel_v2<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
+									a, epsilon, M1, M2, b, height, width);
+}
+
+void simulate_v3(double *d_E, double *d_E_prev, double *d_R, int bx, int by,
+				 const double alpha, const int n, const int m, const double kk,
+				 const double dt, const double a, const double epsilon,
+				 const double M1, const double M2, const double b)
+{
+	int height = m + 2 * RADIUS, width = n + 2 * RADIUS;
+
+	const dim3 block_size(bx, by);
+	const dim3 grid((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
+
+	kernel_v3<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
+									a, epsilon, M1, M2, b, height, width);
+}
+
+void simulate_v4(double *d_E, double *d_E_prev, double *d_R, int bx, int by,
+				 const double alpha, const int n, const int m, const double kk,
+				 const double dt, const double a, const double epsilon,
+				 const double M1, const double M2, const double b)
+{
+	int height = m + 2 * RADIUS, width = n + 2 * RADIUS;
+	int block_height = by + 2 * RADIUS, block_width = bx + 2 * RADIUS;
+
+	const dim3 block_size(bx, by);
+	const dim3 grid((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
+
+	kernel_v4<<<grid, block_size, block_height * block_width * sizeof(double)>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
+																				 a, epsilon, M1, M2, b,
+																				 height, width);
 }
 
 extern "C" void splot(double *E, double T, int niter, int m, int n);
@@ -270,16 +342,28 @@ int main(int argc, char **argv)
 	int plot_freq = 0;
 	int bx = 1, by = 1;
 	int kernel = 1;
+	sim_ptr simulate;
 
 	cmdLine(argc, argv, T, n, bx, by, plot_freq, kernel);
 
 	m = n;
 
 	int height = m + 2 * RADIUS, width = n + 2 * RADIUS;
-	int block_height = by + 2 * RADIUS, block_width = bx + 2 * RADIUS;
 
-	const dim3 block_size(bx, by);
-	const dim3 grid((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
+	switch (kernel)
+	{
+	case 1:
+		simulate = simulate_v1;
+		break;
+	case 2:
+		simulate = simulate_v2;
+		break;
+	case 3:
+		simulate = simulate_v3;
+		break;
+	case 4:
+		simulate = simulate_v4;
+	}
 
 	h_E = alloc1D(height, width);
 	h_E_prev = alloc1D(height, width);
@@ -333,35 +417,7 @@ int main(int argc, char **argv)
 		t += dt;
 		niter++;
 
-		if (kernel == 1)
-		{
-			solve_pde_excitation<<<grid, block_size>>>(d_E, d_E_prev, alpha, height, width);
-
-			cudaDeviceSynchronize();
-
-			solve_ode_excitation<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, a, height, width);
-
-			cudaDeviceSynchronize();
-
-			solve_ode_recovery<<<grid, block_size>>>(d_E, d_E_prev, d_R, kk, dt, epsilon, M1, M2, b, height, width);
-		}
-		else if (kernel == 2)
-		{
-			simulate_kernel_v2<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
-													 a, epsilon, M1, M2, b, height, width);
-		}
-		else if (kernel == 3)
-		{
-			simulate_kernel_v3<<<grid, block_size>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
-													 a, epsilon, M1, M2, b, height, width);
-		}
-
-		else if (kernel == 4)
-		{
-			simulate_kernel_v4<<<grid, block_size, block_height * block_width * sizeof(double)>>>(d_E, d_E_prev, d_R, alpha, kk, dt,
-																								  a, epsilon, M1, M2, b,
-																								  height, width);
-		}
+		simulate(d_E, d_E_prev, d_R, bx, by, alpha, n, m, kk, dt, a, epsilon, M1, M2, b);
 
 		cudaDeviceSynchronize();
 
