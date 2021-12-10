@@ -208,12 +208,13 @@ __global__ void kernel_v4(double *E, double *E_prev, double *R,
 
 	E[global_idx] = e_prev_center + alpha * (E_prev_tile[tile_right] + E_prev_tile[tile_left] -
 											 4 * e_prev_center + E_prev_tile[tile_down] + E_prev_tile[tile_up]);
-
 	e_center = E[global_idx];
 
-	E[global_idx] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
+	e_center = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
+
 	R[global_idx] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
 								   (-r_center - kk * e_center * (e_center - b - 1));
+	E[global_idx] = e_center;
 }
 
 // Simulation functions
