@@ -25,16 +25,16 @@ __global__ void solve_pde_excitation(double *E, double *E_prev, const double alp
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
+	if (!(row < height + RADIUS && col < width + RADIUS))
+	{
+		return;
+	}
+
 	int center = row * width + col;
 	int up = center - width;
 	int down = center + width;
 	int left = center - 1;
 	int right = center + 1;
-
-	if (!(row < height + RADIUS && col < width + RADIUS))
-	{
-		return;
-	}
 
 	E_prev[(row * width) + 0] = E_prev[(row * width) + 2];
 	E_prev[(row * width) + (width - 2 * RADIUS + 1)] = E_prev[(row * width) + (width - 2 * RADIUS - 1)];
@@ -51,12 +51,14 @@ __global__ void solve_ode_excitation(double *E, double *E_prev, double *R,
 	int col = blockIdx.x * blockDim.x + threadIdx.x + RADIUS;
 	int row = blockIdx.y * blockDim.y + threadIdx.y + RADIUS;
 
+	if (!(row < height + RADIUS && col < width + RADIUS))
+	{
+		return;
+	}
+
 	int center = row * width + col;
 
-	if (row < height + RADIUS && col < width + RADIUS)
-	{
-		E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
-	}
+	E[center] = E[center] - dt * (kk * E[center] * (E[center] - a) * (E[center] - 1) + E[center] * R[center]);
 }
 
 __global__ void solve_ode_recovery(double *E, double *E_prev, double *R, const double kk, const double dt,
@@ -141,13 +143,12 @@ __global__ void kernel_v3(double *E, double *E_prev, double *R,
 	double e_prev_center = E_prev[center];
 	double r_center = R[center];
 
-	E[center] = e_prev_center + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_center + E_prev[down] + E_prev[up]);
+	e_center = e_prev_center + alpha * (E_prev[right] + E_prev[left] - 4 * e_prev_center + E_prev[down] + E_prev[up]);
+	e_center = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
 
-	e_center = E[center];
-
-	E[center] = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
 	R[center] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
 							   (-r_center - kk * e_center * (e_center - b - 1));
+	E[center] = e_center;
 }
 
 // Version 4 kernel
@@ -206,10 +207,8 @@ __global__ void kernel_v4(double *E, double *E_prev, double *R,
 	double e_prev_center = E_prev_tile[tile_center];
 	double r_center = R[global_idx];
 
-	E[global_idx] = e_prev_center + alpha * (E_prev_tile[tile_right] + E_prev_tile[tile_left] -
-											 4 * e_prev_center + E_prev_tile[tile_down] + E_prev_tile[tile_up]);
-	e_center = E[global_idx];
-
+	e_center = e_prev_center + alpha * (E_prev_tile[tile_right] + E_prev_tile[tile_left] -
+										4 * e_prev_center + E_prev_tile[tile_down] + E_prev_tile[tile_up]);
 	e_center = e_center - dt * (kk * e_center * (e_center - a) * (e_center - 1) + e_center * r_center);
 
 	R[global_idx] = r_center + dt * (epsilon + M1 * r_center / (e_center + M2)) *
