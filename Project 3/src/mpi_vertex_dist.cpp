@@ -23,35 +23,18 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
     auto start_time = Time::now();
 
     int local_should_run = true;
-    int global_should_run = true;
-
-    int local_waiting_for_update = !(start_vertex >= local_begin_vertex && start_vertex < local_end_vertex);
     int local_depth = 0;
 
     result[start_vertex] = local_depth;
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    while (local_should_run || global_should_run)
+    while (local_should_run)
     {
-        local_should_run = local_waiting_for_update;
+        local_should_run = false;
 
         for (int vertex = local_begin_vertex; vertex < local_end_vertex; vertex++)
         {
-            if (local_waiting_for_update)
-            {
-                if (result[vertex] != MAX_DIST)
-                {
-                    local_depth = result[vertex] - 1;
-                    local_waiting_for_update = false;
-                    break;
-                }
-                else
-                {
-                    continue;
-                }
-            }
-
             if (result[vertex] == local_depth)
             {
                 for (int n = graph->v_adj_begin[vertex]; n < graph->v_adj_begin[vertex] + graph->v_adj_length[vertex]; n++)
@@ -69,8 +52,6 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 
         local_depth++;
 
-        MPI_Allreduce(&local_should_run, &global_should_run, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-        // MPI_Allreduce(MPI_IN_PLACE, result, global_num_vertices, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
         MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, result, counts, disps, MPI_INT, MPI_COMM_WORLD);
     }
 
