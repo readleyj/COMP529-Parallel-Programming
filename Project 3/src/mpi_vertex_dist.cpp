@@ -1,5 +1,3 @@
-using namespace std;
-
 int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 {
     int global_num_vertices = graph->num_vertices;
