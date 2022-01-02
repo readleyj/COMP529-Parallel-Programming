@@ -40,7 +40,7 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
         {
             if (local_waiting_for_update)
             {
-                if (result[vertex] != MAX_DIST)
+                if (result[vertex] != local_depth)
                 {
                     local_depth = result[vertex] - 1;
                     local_waiting_for_update = false;
