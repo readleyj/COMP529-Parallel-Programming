@@ -187,7 +187,7 @@ graph_t *read_graph()
     if (my_rank == 0)
         printf("Input file has %d vertices and %i edges\n", num_vertices, num_edges);
 
-    // Build adajacency lists (still reading file)
+    // Build adjacency lists (still reading file)
     infile.clear();
     infile.seekg(0, ios::beg);
     //skip the comments, num vertices and edges line
@@ -253,7 +253,7 @@ graph_t *read_graph()
     */
 
     // Generate data structure
-    // printf("Build ajacency lists\n");
+    // printf("Build adjacency lists\n");
     int next_offset = 0;
 
     for (int i = 0; i < num_vertices; i++)
