@@ -6,9 +6,11 @@ int mpi_frontier(graph_t *graph, int start_vertex, int *result)
     int *counts = new int[num_proc];
     int *disps = new int[num_proc];
 
-    vector<pair<int, int>> incoming_updates(global_num_vertices);
+    vector<pair<int, int>> incoming_updates;
+    incoming_updates.reserve(global_num_vertices);
 
     vector<pair<int, int>> outgoing_updates;
+    outgoing_updates.reserve(global_num_vertices);
     int num_outgoing_updates = 0;
 
     int *num_updates_aggregate = new int[num_proc];
