@@ -12,7 +12,6 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
     int *disps = new int[num_proc];
 
     vector<pair<int, int>> incoming_updates(global_num_vertices);
-    int num_incoming_updates = 0;
 
     vector<pair<int, int>> outgoing_updates;
     int num_outgoing_updates = 0;
@@ -23,7 +22,6 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 
     auto start_time = Time::now();
 
-    int local_waiting_for_update = !(start_vertex >= local_begin_vertex && start_vertex < local_end_vertex);
     int local_depth = 0;
 
     int local_should_run = true;
@@ -33,24 +31,10 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 
     while (local_should_run || global_should_run)
     {
-        local_should_run = local_waiting_for_update;
+        local_should_run = false;
 
         for (int vertex = local_begin_vertex; vertex < local_end_vertex; vertex++)
         {
-            if (local_waiting_for_update)
-            {
-                if (result[vertex] != MAX_DIST)
-                {
-                    local_depth = result[vertex] - 1;
-                    local_waiting_for_update = false;
-                    break;
-                }
-                else
-                {
-                    continue;
-                }
-            }
-
             if (result[vertex] == local_depth)
             {
                 for (int n = graph->v_adj_begin[vertex]; n < graph->v_adj_begin[vertex] + graph->v_adj_length[vertex]; n++)
@@ -68,8 +52,6 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
                 }
             }
         }
-
-        local_depth++;
 
         MPI_Barrier(MPI_COMM_WORLD);
         MPI_Allgather(&num_outgoing_updates, 1, MPI_INT, num_updates_aggregate, 1, MPI_INT, MPI_COMM_WORLD);
@@ -103,11 +85,12 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
             result[update.first] = min(update.second, result[update.first]);
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
-        MPI_Allreduce(&local_should_run, &global_should_run, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-
         num_outgoing_updates = 0;
         outgoing_updates.clear();
+        local_depth++;
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Allreduce(&local_should_run, &global_should_run, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
 
         MPI_Barrier(MPI_COMM_WORLD);
     }
