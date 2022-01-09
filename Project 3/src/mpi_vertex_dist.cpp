@@ -1,5 +1,3 @@
-#define PAIR_SIZE sizeof(pair<int, int>)
-
 int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 {
     int global_num_vertices = graph->num_vertices;
