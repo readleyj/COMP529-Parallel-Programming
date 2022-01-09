@@ -29,7 +29,7 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 
     result[start_vertex] = local_depth;
 
-    while (local_should_run || global_should_run)
+    while (global_should_run)
     {
         local_should_run = false;
 
@@ -43,9 +43,7 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 
                     if (result[neighbor] > local_depth + 1)
                     {
-                        result[neighbor] = local_depth + 1;
                         local_should_run = true;
-
                         outgoing_updates.push_back(make_pair(neighbor, local_depth + 1));
                         num_outgoing_updates++;
                     }
@@ -53,7 +51,6 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
             }
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Allgather(&num_outgoing_updates, 1, MPI_INT, num_updates_aggregate, 1, MPI_INT, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
@@ -75,24 +72,20 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
             total_updates += num_updates_aggregate[process_num];
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Allgatherv((void *)outgoing_updates.data(), num_outgoing_updates * PAIR_SIZE, MPI_BYTE, (void *)incoming_updates.data(), counts, disps, MPI_BYTE, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
         for (int i = 0; i < total_updates; i++)
         {
             auto update = incoming_updates[i];
-            result[update.first] = min(update.second, result[update.first]);
+            result[update.first] = update.second;
         }
 
         num_outgoing_updates = 0;
         outgoing_updates.clear();
         local_depth++;
 
-        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Allreduce(&local_should_run, &global_should_run, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-
-        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     // print_result(graph, result, local_depth);
