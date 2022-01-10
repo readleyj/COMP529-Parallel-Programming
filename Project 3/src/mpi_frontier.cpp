@@ -6,11 +6,9 @@ int mpi_frontier(graph_t *graph, int start_vertex, int *result)
     int *counts = new int[num_proc];
     int *disps = new int[num_proc];
 
-    vector<pair<int, int>> incoming_updates;
-    incoming_updates.reserve(global_num_vertices);
+    int *incoming_updates = new int[global_num_vertices];
 
-    vector<pair<int, int>> outgoing_updates;
-    outgoing_updates.reserve(global_num_vertices);
+    int *outgoing_updates = new int[global_num_vertices];
     int num_outgoing_updates = 0;
 
     int *num_updates_aggregate = new int[num_proc];
@@ -39,8 +37,6 @@ int mpi_frontier(graph_t *graph, int start_vertex, int *result)
         int local_num_vertices = (front_in_size * (my_rank + 1)) / num_proc - (front_in_size * my_rank) / num_proc;
         int local_end_vertex = local_begin_vertex + local_num_vertices;
 
-        // printf("%d %d %d %d. Iteration %d\n", local_begin_vertex, local_end_vertex, local_num_vertices, my_rank, local_depth);
-
         for (int v = local_begin_vertex; v < local_end_vertex; v++)
         {
             int vertex = frontier_in[v];
@@ -53,7 +49,7 @@ int mpi_frontier(graph_t *graph, int start_vertex, int *result)
 
                 if (result[neighbor] > local_depth + 1)
                 {
-                    outgoing_updates.push_back(make_pair(neighbor, local_depth + 1));
+                    outgoing_updates[num_outgoing_updates] = neighbor;
                     num_outgoing_updates++;
                 }
             }
@@ -65,7 +61,7 @@ int mpi_frontier(graph_t *graph, int start_vertex, int *result)
 
         for (int process_num = 0; process_num < num_proc; process_num++)
         {
-            counts[process_num] = num_updates_aggregate[process_num] * PAIR_SIZE;
+            counts[process_num] = num_updates_aggregate[process_num];
 
             if (process_num >= 1)
             {
@@ -79,19 +75,18 @@ int mpi_frontier(graph_t *graph, int start_vertex, int *result)
             total_updates += num_updates_aggregate[process_num];
         }
 
-        MPI_Allgatherv((void *)outgoing_updates.data(), num_outgoing_updates * PAIR_SIZE, MPI_BYTE, (void *)incoming_updates.data(), counts, disps, MPI_BYTE, MPI_COMM_WORLD);
+        MPI_Allgatherv(outgoing_updates, num_outgoing_updates, MPI_INT, incoming_updates, counts, disps, MPI_INT, MPI_COMM_WORLD);
 
         for (int i = 0; i < total_updates; i++)
         {
-            auto update = incoming_updates[i];
+            int vertex = incoming_updates[i];
 
-            result[update.first] = update.second;
-            frontier_out[front_out_size] = update.first;
+            result[vertex] = local_depth + 1;
+            frontier_out[front_out_size] = vertex;
             front_out_size++;
         }
 
         num_outgoing_updates = 0;
-        outgoing_updates.clear();
 
         front_in_size = front_out_size;
         int *temp = frontier_in;

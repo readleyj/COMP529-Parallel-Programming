@@ -23,7 +23,6 @@ int num_proc;
 #define MAX_INT 1073741824
 #define MAX_DIST MAX_INT
 #define MAX_SOURCES 1024
-#define PAIR_SIZE sizeof(pair<int, int>)
 
 struct graph_t
 {

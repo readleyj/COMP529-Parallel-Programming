@@ -9,11 +9,9 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
     int *counts = new int[num_proc];
     int *disps = new int[num_proc];
 
-    vector<pair<int, int>> incoming_updates;
-    incoming_updates.reserve(global_num_vertices);
+    int *incoming_updates = new int[global_num_vertices];
 
-    vector<pair<int, int>> outgoing_updates;
-    outgoing_updates.reserve(global_num_vertices);
+    int *outgoing_updates = new int[global_num_vertices];
     int num_outgoing_updates = 0;
 
     int *num_updates_aggregate = new int[num_proc];
@@ -44,7 +42,7 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
                     if (result[neighbor] > local_depth + 1)
                     {
                         local_should_run = true;
-                        outgoing_updates.push_back(make_pair(neighbor, local_depth + 1));
+                        outgoing_updates[num_outgoing_updates] = neighbor;
                         num_outgoing_updates++;
                     }
                 }
@@ -58,7 +56,7 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
 
         for (int process_num = 0; process_num < num_proc; process_num++)
         {
-            counts[process_num] = num_updates_aggregate[process_num] * PAIR_SIZE;
+            counts[process_num] = num_updates_aggregate[process_num];
 
             if (process_num >= 1)
             {
@@ -72,17 +70,16 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
             total_updates += num_updates_aggregate[process_num];
         }
 
-        MPI_Allgatherv((void *)outgoing_updates.data(), num_outgoing_updates * PAIR_SIZE, MPI_BYTE, (void *)incoming_updates.data(), counts, disps, MPI_BYTE, MPI_COMM_WORLD);
+        MPI_Allgatherv(outgoing_updates, num_outgoing_updates, MPI_INT, incoming_updates, counts, disps, MPI_INT, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
         for (int i = 0; i < total_updates; i++)
         {
-            auto update = incoming_updates[i];
-            result[update.first] = update.second;
+            int vertex = incoming_updates[i];
+            result[vertex] = local_depth + 1;
         }
 
         num_outgoing_updates = 0;
-        outgoing_updates.clear();
         local_depth++;
 
         MPI_Allreduce(&local_should_run, &global_should_run, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
