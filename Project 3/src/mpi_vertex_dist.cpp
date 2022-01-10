@@ -76,7 +76,11 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
         for (int i = 0; i < total_updates; i++)
         {
             int vertex = incoming_updates[i];
-            result[vertex] = local_depth + 1;
+
+            if (result[vertex] == MAX_DIST)
+            {
+                result[vertex] = local_depth + 1;
+            }
         }
 
         num_outgoing_updates = 0;

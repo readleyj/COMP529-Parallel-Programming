@@ -81,9 +81,12 @@ int mpi_frontier(graph_t *graph, int start_vertex, int *result)
         {
             int vertex = incoming_updates[i];
 
-            result[vertex] = local_depth + 1;
-            frontier_out[front_out_size] = vertex;
-            front_out_size++;
+            if (result[vertex] == MAX_DIST)
+            {
+                result[vertex] = local_depth + 1;
+                frontier_out[front_out_size] = vertex;
+                front_out_size++;
+            }
         }
 
         num_outgoing_updates = 0;
