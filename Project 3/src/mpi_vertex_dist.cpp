@@ -71,7 +71,6 @@ int mpi_vertex_dist(graph_t *graph, int start_vertex, int *result)
         }
 
         MPI_Allgatherv(outgoing_updates, num_outgoing_updates, MPI_INT, incoming_updates, counts, disps, MPI_INT, MPI_COMM_WORLD);
-        MPI_Barrier(MPI_COMM_WORLD);
 
         for (int i = 0; i < total_updates; i++)
         {
